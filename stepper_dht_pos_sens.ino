@@ -69,6 +69,8 @@ bool lever_status = true;
 
 unsigned long start_time = 0;
 unsigned long curr_time = 0;
+unsigned long sense_interval = 0;
+unsigned long disp_interval = 0;
 unsigned long max_wait = 60;
 
 float humidity = 0;
@@ -157,228 +159,34 @@ void setup(){
 }
 
 void loop(){
-  bool menuCounter = false;
-  while(menuState){    
-    count = getEncoder(count);
-    delay(1);
-    // navigate through different menu options
-    switch(count){
-      case 0: //BASIC MENU
-        if(count==0 && !menuCounter){
-          lcd.clear();
-          lcd.print("MENU");  
-          lcd.setCursor(0,1);
-          lcd.print("Rotate to select");
-          menuCounter = true;
-          prevCount = count;
-        }
-        break;
-      case 1: //SET MAXIMUM TEMPERATURE
-        if(prevCount!=count){
-          lcd.clear();
-          lcd.print("SET MAX TEMP");
-          prevCount = count;
-        }
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-        }
-        while(selected){
-          // display temperature only once
-          if(float_abs_diff(upperLimit, prevReading)){
-            lcd_print("Temp Max: ", upperLimit);
-          }
-          prevReading = upperLimit;
-          // get encoder readings
-          count = getEncoder(count);
-          // increment the value
-          if(count>prevCount)upperLimit += 0.1;
-          // decrement the value
-          if(count<prevCount)upperLimit -= 0.1;
-          // check if it reached lower limit
-          if(upperLimit <= lowerLimit){
-            upperLimit = lowerLimit;
-          }
-          prevCount = count;    // remember the count to track changes
-          // exit from the loop if button pressed
-          if(buttonState!=prevButtonState){
-            selected = false;
-            count = 1;
-            prevCount = 0;
-            prevReading = 0;
-            break;
-          }
-        }
-        break;
-      case 2: // SET MINIMUM TEMPERATURE
-        if(prevCount!=count){
-          lcd.clear();
-          lcd.print("SET MIN TEMP");
-          prevCount = count;
-        }
-        
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-        }
-        while(selected){
-          // disply only once
-          if(float_abs_diff(lowerLimit, prevReading)){
-            lcd_print("Temp Min: ", lowerLimit);
-          }
-          prevReading = lowerLimit;             // remember previous reading
-          
-          count = getEncoder(count);            // Get encoder readings
-          if(count>prevCount)lowerLimit += 0.1; // increment
-          if(count<prevCount)lowerLimit -= 0.1; // decrement
-          // check if lower limit reached upper limit value
-          if(lowerLimit >= upperLimit){
-            lowerLimit = upperLimit;
-          }
-          prevCount = count;                    // remember previous encoder count
-          // if button pressed exit from loop
-          if(buttonState!=prevButtonState){
-            selected = false;
-            count = 2;
-            prevCount = 0;
-            prevReading = 0;
-            break;
-          }
-        }
-        break;
-      case 3: // SET MINIMUM TEMPERATURE
-        if(prevCount!=count){
-          lcd.clear();
-          lcd.print("MOVE TRAY");
-          prevCount = count;
-        }
-        
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-        }
-
-        //display only once
-        disp = true;
-        while(selected){
-          if(disp){
-            lcd.clear();
-            lcd.print("Moving");
-            disp = false;
-          }
-          
-          count = getEncoder(count);            // Get encoder readings
-          if(count>prevCount){
-            if(!digitalRead(pol_a_pin))myStepper.step(30);
-            stepperOff();
-            lcd.clear();
-            lcd.print("Move forward");
-          }
-          if(count<prevCount){
-            if(!digitalRead(pol_b_pin))myStepper.step(-30);
-            stepperOff();
-            lcd.clear();
-            lcd.print("Move backward");            
-          }
-          prevCount = count;                    // remember previous encoder count
-          // if button pressed exit from loop
-          if(buttonState!=prevButtonState){
-            selected = false;
-            count = 3;
-            prevCount = 0;
-            prevReading = 0;
-            break;
-          }
-        }
-        break;
-      case 4:
-        if(prevCount!=count){
-          lcd.clear();
-          lcd.print("MOVING INTERVAL");
-          prevCount = count;
-        }
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-        }
-
-        //display only once
-        disp = true;
-        while(selected){
-          if(disp){
-            lcd.clear();
-            lcd.print("Move every ");
-            lcd.print(rot_interval);
-            lcd.print(" Hr");
-            disp = false;
-          }
-          
-          count = getEncoder(count);            // Get encoder readings
-          if(count>prevCount)rot_interval++;    // increment
-          if(count<prevCount)rot_interval--;    // decrement
-          (rot_interval<1)?rot_interval=1:rot_interval=rot_interval;  // prevent going below 1
-          (rot_interval>10)?rot_interval=10:rot_interval=rot_interval;// prevent going above 10
-          // if change in interval display
-          if(temp != rot_interval){
-            lcd.clear();
-            lcd.print("Move every ");
-            lcd.print(rot_interval);
-            lcd.print(" Hr");
-          }
-          temp = rot_interval;                  // remember previous rot_interval
-          prevCount = count;                    // remember previous encoder count
-          // if button pressed exit from loop
-          if(buttonState!=prevButtonState){
-            selected = false;
-            count = 4;
-            prevCount = 0;
-            prevReading = 0;
-            break;
-          }
-        }
-        break;
-      case 5://SET TIME AND DATE
-        if(prevCount!=count){
-          lcd.clear();
-          lcd.print("DATE & TIME");
-          prevCount = count;
-        }
-      case 6:
-        if(prevCount!=count){
-          lcd.clear();
-          lcd.print("EXIT");
-          prevCount = count;
-        }
-        if(prevButtonState!=buttonState){
-          menuState = false;
-          count = 0;
-        }
-        break;   
+  // Get current time
+  curr_time = millis();
+  // Get date and time from RTC module
+  DateTime dt_now = RTC.now();
+  String date_string = get_date_string(dt_now);
+  
+  // get temperature and humidity sensor readings every one second
+  if(curr_time - sense_interval >= 1000UL){
+    // Request temperature readings from DS18b20 sensor
+    sensors.requestTemperatures();
+    temperature = sensors.getTempCByIndex(0);
+    // Reading temperature or humidity takes about 250 milliseconds!
+    // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+    humidity = dht.readHumidity();
+    dht_temperature = dht.readTemperature();
+    // check if reading was successful
+    if(isnan(humidity)||isnan(dht_temperature)){
+      Serial.println(F("Failed to read from DHT Sensor!"));
     }
-    prevButtonState = buttonState;   
+    // calculate average of last readings
+    tempArray[avgCounter] = temperature;
+    // increment avgCounter to store temperature in array
+    (avgCounter>=5)?avgCounter=0:avgCounter++;
+    // keep track of the sense_interval
+    sense_interval = curr_time;
   }
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  humidity = dht.readHumidity();
-  dht_temperature = dht.readTemperature();
-  // check if reading was successful
-  if(isnan(humidity)||isnan(dht_temperature)){
-    Serial.println(F("Failed to read from DHT Sensor!"));
-  }
-  delay(500);
-
-  // Request temperature readings from DS18b20 sensor
-  sensors.requestTemperatures();
-  temperature = sensors.getTempCByIndex(0);
-  delay(500);
-
-  // calculate average of last readings
-  tempArray[avgCounter] = temperature;
-  // increment avgCounter to store temperature in array
-  avgCounter++;
-  if(avgCounter>=5){
-    avgCounter = 0;
-  }
+ 
+ 
   // get average temperature from the array
   avgTemp = get_avg_temp(tempArray);
   // if average_temperature more than upper limit, switch off the heater
@@ -387,8 +195,13 @@ void loop(){
   }
   if((lowerLimit - avgTemp) > 0.1){
     digitalWrite(heatPin, HIGH);
-    // display in lcd
+  }
+
+  if(curr_time - disp_interval>2000UL){
     lcd.clear();
+    lcd.setCursor(0,1);
+    lcd.print(date_string);
+    
     lcd.setCursor(0,0);
     lcd.print("T:");
     lcd.print(temperature);
@@ -396,59 +209,20 @@ void loop(){
     lcd.print("  H:");
     lcd.print(int(humidity));
     lcd.print("%");
-    lcd.setCursor(0,1);
-    lcd.print("    HEATING");
+
+    // Serial print
+    Serial.println(date_string); 
+    Serial.print("Temp reading from DS18b20: ");
+    Serial.println(temperature);  
+    Serial.print("Humidity: ");
+    Serial.print(humidity); 
+    Serial.print(", DHT temp: ");
+    Serial.println(dht_temperature);
+    // track disply interval 
+    disp_interval = curr_time;
+    Serial.println(disp_interval);
   }
   
-  
-  // if lever status fails 
-  if(!lever_status){
-    for(int i=0; i<3; i++){
-      lcd.clear();
-      delay(500);   
-      lcd.print("Rotation fail!!");
-      delay(500);   
-    }
-  }
-  
-//  // Read temperature as Celsius (the default)
-//  float t = dht.readTemperature();   
-  
-//  // Check if any reads failed and exit early (to try again).
-//  if (isnan(h) || isnan(t)) {
-//    Serial.println(F("Failed to read from DHT sensor!"));
-//    return;
-//  }
-
-  // Get date and time from RTC module
-  DateTime dt_now = RTC.now();
-
-  String date_string = get_date_string(dt_now);
-  Serial.println(date_string);
-  delay(100);
-
-  
-  Serial.print("Temp reading from DS18b20: ");
-  Serial.println(temperature);  
-  Serial.print("Humidity: ");
-  Serial.print(humidity); 
-  Serial.print(", DHT temp: ");
-  Serial.println(dht_temperature);
-  delay(500);
-
-  lcd.clear();
-  lcd.setCursor(0,1);
-  lcd.print(date_string);
-  
-  lcd.setCursor(0,0);
-  lcd.print("T:");
-  lcd.print(temperature);
-  lcd.print("C");
-  lcd.print("  H:");
-  lcd.print(int(humidity));
-  lcd.print("%");
-
-  delay(500);
 
   // Check if triggered time is reached
   if((dt_now.hour()%rot_interval == 0)&&(dt_now.minute()==0)){
@@ -456,46 +230,46 @@ void loop(){
   }
 
  
-  if(rot_trigger && lever_status){
-    // Switch of the heating element while rotating
-    digitalWrite(heatPin, LOW);
-    lcd.clear();
-    int count = 5;
-    for(int i=0; i<count; i++){
-      lcd.clear();
-      lcd.print("Rotating in: ");
-      count--;
-      lcd.print(count);
-      lcd.print("s");
-      delay(1000);
-    }
-    // if starting at pole A move to pole B
-    if(pol_a){
-      lcd.clear();
-      lcd.print("Rotating.. to B");
-      move_to(pol_b_pin, 'B');
-      rot_trigger = false;
-    }else if(pol_b){
-      // if at pole B move to pole A
-      lcd.clear();
-      lcd.print("Rotating.. to A");
-      move_to(pol_a_pin, 'A');
-      rot_trigger = false;      
-    }
-    
-  }
+//  if(rot_trigger && lever_status){
+//    // Switch of the heating element while rotating
+//    digitalWrite(heatPin, LOW);
+//    lcd.clear();
+//    int count = 5;
+//    for(int i=0; i<count; i++){
+//      lcd.clear();
+//      lcd.print("Rotating in: ");
+//      count--;
+//      lcd.print(count);
+//      lcd.print("s");
+//      delay(1000);
+//    }
+//    // if starting at pole A move to pole B
+//    if(pol_a){
+//      lcd.clear();
+//      lcd.print("Rotating.. to B");
+//      move_to(pol_b_pin, 'B');
+//      rot_trigger = false;
+//    }else if(pol_b){
+//      // if at pole B move to pole A
+//      lcd.clear();
+//      lcd.print("Rotating.. to A");
+//      move_to(pol_a_pin, 'A');
+//      rot_trigger = false;      
+//    }
+//    
+//  }
 
-  // Serial monitor, to see positions sensor data
-  Serial.print("Pol A: ");
-  pol_a = digitalRead(pol_a_pin);
-  Serial.println(pol_a);
-
-  Serial.print("Pol B: ");
-  pol_b = digitalRead(pol_b_pin);
-  Serial.println(pol_b);
-  delay(500);
-  Serial.println();
-  stepperOff();
+//  // Serial monitor, to see positions sensor data
+//  Serial.print("Pol A: ");
+//  pol_a = digitalRead(pol_a_pin);
+//  Serial.println(pol_a);
+//
+//  Serial.print("Pol B: ");
+//  pol_b = digitalRead(pol_b_pin);
+//  Serial.println(pol_b);
+//  delay(500);
+//  Serial.println();
+//  stepperOff();
 
   
 }
