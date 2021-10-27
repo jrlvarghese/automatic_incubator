@@ -61,6 +61,8 @@ bool rot_trigger = false;
 volatile bool pinALastState = false;
 bool pinACurrState = false;
 int count = 0;
+int menuCount = 0;
+int prevMenuCount = -1;
 unsigned int prevCount = 50;
 
 bool pol_a = false;             // Analog pin A0
@@ -87,6 +89,7 @@ bool menuState = false;
 bool selected = false;
 bool disp = false;
 String menuOptions[6] = {"TEMPERATURE MAX", "TEMPERATURE MIN", "MOVE TRAY", "MOVING INTERVAL", "DATE & TIME", "EXIT"};
+String dateTimeOptions[5] = {"HOUR", "MINUTE", "DATE", "MONTH", "YEAR"};
 
 void setup(){
   pinMode(pol_a_pin, INPUT);
@@ -171,23 +174,24 @@ void loop(){
   start_time = millis();
   // if menu button pressed enter into menu loop
   while(menuState){    
-    curr_time = millis();
+    digitalWrite(heatPin, LOW);   // switch off the heater while inside menu
+    curr_time = millis();         // track time to control menu loop
     // if menu wait time(30 seconds) exceeds limit exit loop
     if((curr_time - start_time)>30000UL){
       menuState = false;
-      prevCount = -1;
+      prevMenuCount = -1;     // so that when it enters menu next time update display
       break;
     }
-    count = getEncoder(count);
+    menuCount = getEncoder(menuCount);
     delay(1);
-    (count>5)?count=5:count;
-    (count<0)?count=0:count;
+    (menuCount>5)?menuCount=5:menuCount;
+    (menuCount<0)?menuCount=0:menuCount;
     // navigate through different menu options
-    switch(count){
+    switch(menuCount){
       case 0: //SET MAXIMUM TEMPERATURE
-        if(prevCount!=count){
-          updateMenu(menuOptions,count,6);          
-          prevCount = count;
+        if(prevMenuCount!=menuCount){
+          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));          
+          prevMenuCount = menuCount;
         }
         if(buttonState!=prevButtonState){
           selected = true;
@@ -214,8 +218,8 @@ void loop(){
           // exit from the loop if button pressed
           if(buttonState!=prevButtonState){
             selected = false;
-            count = 0;
-            prevCount = -1;
+            menuCount = 0;
+            prevMenuCount = -1;
             prevReading = 0;
             prevButtonState = buttonState;
             start_time = millis();
@@ -224,9 +228,9 @@ void loop(){
         }
         break;
       case 1: // SET MINIMUM TEMPERATURE
-        if(prevCount!=count){
-          updateMenu(menuOptions, count, 6);          
-          prevCount = count;
+        if(prevMenuCount!=menuCount){
+          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));
+          prevMenuCount = menuCount;
         }
         
         if(buttonState!=prevButtonState){
@@ -235,6 +239,13 @@ void loop(){
           start_time = millis();
         }
         while(selected){
+          curr_time = millis();
+          // exit the loop if wait time exeeds
+          if((curr_time - start_time)>30000UL){
+            selected = false;
+            prevMenuCount = -1;
+            break;
+          }
           // disply only once
           if(float_abs_diff(lowerLimit, prevReading)){
             lcd_print("Temp Min: ", lowerLimit);
@@ -253,8 +264,7 @@ void loop(){
           if(buttonState!=prevButtonState){
             prevButtonState = buttonState;
             selected = false;
-            count = 1;
-            prevCount = 0;
+            prevMenuCount = -1;
             prevReading = 0;
             start_time = millis();    // reset menu wait time
             break;
@@ -262,9 +272,9 @@ void loop(){
         }
         break;
       case 2: // SET MINIMUM TEMPERATURE
-        if(prevCount!=count){
-          updateMenu(menuOptions, count, 6);          
-          prevCount = count;
+        if(prevMenuCount!=menuCount){
+          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));
+          prevMenuCount = menuCount;
         }
         
         if(buttonState!=prevButtonState){
@@ -275,14 +285,24 @@ void loop(){
 
         //display only once
         disp = true;
+        // adjustment loop
         while(selected){
+          curr_time = millis();
+          // exit the loop if wait time exeeds
+          if((curr_time - start_time)>30000UL){
+            selected = false;
+            prevMenuCount = -1;
+            break;
+          }
+          // display menu item
           if(disp){
             lcd.clear();
-            lcd.print("Moving");
+            lcd.print("Rotate to move");
             disp = false;
           }
           
           count = getEncoder(count);            // Get encoder readings
+          delay(1);
           if(count>prevCount){
             if(!digitalRead(pol_a_pin))myStepper.step(30);
             stepperOff();
@@ -299,8 +319,7 @@ void loop(){
           // if button pressed exit from loop
           if(buttonState!=prevButtonState){
             selected = false;
-            count = 2;
-            prevCount = 0;
+            prevMenuCount = -1;
             prevReading = 0;
             prevButtonState = buttonState;
             start_time = millis();      // reset menu wait time
@@ -308,10 +327,10 @@ void loop(){
           }
         }
         break;
-      case 3:
-        if(prevCount!=count){
-          updateMenu(menuOptions, count, 6);          
-          prevCount = count;
+      case 3: // MOVING INTERVAL
+        if(prevMenuCount!=menuCount){
+          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));          
+          prevMenuCount = menuCount;
         }
         if(buttonState!=prevButtonState){
           selected = true;
@@ -322,6 +341,13 @@ void loop(){
         //display only once
         disp = true;
         while(selected){
+          curr_time = millis();
+          // exit the loop if wait time exeeds
+          if((curr_time - start_time)>30000UL){
+            selected = false;
+            prevMenuCount = -1;
+            break;
+          }
           if(disp){
             lcd.clear();
             lcd.print("Move every ");
@@ -347,29 +373,94 @@ void loop(){
           // if button pressed exit from loop
           if(buttonState!=prevButtonState){
             selected = false;
-            count = 3;
-            prevCount = 0;
-            prevReading = 0;
+            prevMenuCount = -1;         // reset previous menu 
             prevButtonState = buttonState;
+            temp = -1;
             start_time = millis();      // reset menu wait time
             break;
           }
         }
         break;
       case 4://SET TIME AND DATE
-        if(prevCount!=count){
-          updateMenu(menuOptions, count, 6);          
-          prevCount = count;
+        if(prevMenuCount!=menuCount){
+          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));;          
+          prevMenuCount = menuCount;
+        }
+        if(buttonState!=prevButtonState){
+          selected = true;
+          prevButtonState = buttonState;
+          start_time = millis();      // reset menu wait time
+        }
+        count = 0;
+        prevCount = -1;
+        while(selected){// adjustment loop
+          // exit loop if wait time exceeds
+          curr_time = millis();
+          // exit the loop if wait time exeeds
+          if((curr_time - start_time)>30000UL){
+            selected = false;
+            prevMenuCount = -1;
+            break;
+          }
+          count = getEncoder(count);
+          // validate count
+          (count>4)?count=4:count;
+          (count<0)?count=0:count;
+          delay(1);
+          if(count != prevCount){
+              updateMenu(dateTimeOptions, count, sizeof(dateTimeOptions)/sizeof(String));
+              prevCount = count;
+          }
+
+          if(buttonState!=prevButtonState){
+            selected = false;
+            prevMenuCount = -1;         // reset previous menu 
+            prevButtonState = buttonState;
+            temp = -1;
+            start_time = millis();       // reset menu wait time
+            break;
+          }
+          // switch(count){
+          //   case 0:
+          //     if(count != prevCount){
+          //       updateMenu(dateTimeOptions, count);
+          //       prevCount = count;
+          //     }
+          //   break;
+          //   case 1:
+          //      if(count != prevCount){
+          //       updateMenu(dateTimeOptions, count);
+          //       prevCount = count;
+          //     }
+          //   break;
+          //   case 2:
+          //     if(count != prevCount){
+          //       updateMenu(dateTimeOptions, count);
+          //       prevCount = count;
+          //     }
+          //   break;
+          //   case 3:
+          //     if(count != prevCount){
+          //       updateMenu(dateTimeOptions, count);
+          //       prevCount = count;
+          //     }
+          //   break;
+          //   default:
+          //   break;
+
+          // }
+
         }
         break;
-      case 5:
-        if(prevCount!=count){
-          updateMenu(menuOptions, count, 6);          
-          prevCount = count;
+      case 5: // EXIT MENU
+        if(prevMenuCount!=menuCount){
+          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));;          
+          prevMenuCount = menuCount;
         }
         if(prevButtonState!=buttonState){
           menuState = false;
-          count = 0;
+          menuCount = 0;
+          prevMenuCount = -1;
           prevButtonState = buttonState;
         }
         break; 
