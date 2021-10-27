@@ -162,14 +162,22 @@ void setup(){
 }
 
 void loop(){
-  bool menuCounter = false;
   // track if there is buttonstate change then enter into menu
   if(buttonState != prevButtonState){
     menuState = true;
     prevButtonState = buttonState;
   }
+  // track time on a menu loop if it exceeds limit exit the loop
+  start_time = millis();
   // if menu button pressed enter into menu loop
   while(menuState){    
+    curr_time = millis();
+    // if menu wait time(30 seconds) exceeds limit exit loop
+    if((curr_time - start_time)>30000UL){
+      menuState = false;
+      prevCount = -1;
+      break;
+    }
     count = getEncoder(count);
     delay(1);
     (count>5)?count=5:count;
@@ -184,6 +192,7 @@ void loop(){
         if(buttonState!=prevButtonState){
           selected = true;
           prevButtonState = buttonState;
+          start_time = millis();
         }
         while(selected){
           // display temperature only once
@@ -209,6 +218,7 @@ void loop(){
             prevCount = -1;
             prevReading = 0;
             prevButtonState = buttonState;
+            start_time = millis();
             break;
           }
         }
@@ -222,6 +232,7 @@ void loop(){
         if(buttonState!=prevButtonState){
           selected = true;
           prevButtonState = buttonState;
+          start_time = millis();
         }
         while(selected){
           // disply only once
@@ -245,6 +256,7 @@ void loop(){
             count = 1;
             prevCount = 0;
             prevReading = 0;
+            start_time = millis();    // reset menu wait time
             break;
           }
         }
@@ -258,6 +270,7 @@ void loop(){
         if(buttonState!=prevButtonState){
           selected = true;
           prevButtonState = buttonState;
+          start_time = millis();      // reset menu wait time
         }
 
         //display only once
@@ -290,6 +303,7 @@ void loop(){
             prevCount = 0;
             prevReading = 0;
             prevButtonState = buttonState;
+            start_time = millis();      // reset menu wait time
             break;
           }
         }
@@ -302,6 +316,7 @@ void loop(){
         if(buttonState!=prevButtonState){
           selected = true;
           prevButtonState = buttonState;
+          start_time = millis();      // reset menu wait time
         }
 
         //display only once
@@ -336,6 +351,7 @@ void loop(){
             prevCount = 0;
             prevReading = 0;
             prevButtonState = buttonState;
+            start_time = millis();      // reset menu wait time
             break;
           }
         }
