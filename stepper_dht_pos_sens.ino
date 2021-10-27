@@ -186,19 +186,28 @@ void loop(){
     delay(1);
     (menuCount>5)?menuCount=5:menuCount;
     (menuCount<0)?menuCount=0:menuCount;
+    // update menu if changed
+    if(prevMenuCount!=menuCount){
+      updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));          
+      prevMenuCount = menuCount;
+    }
+    // select menu based on selection
+    if(buttonState!=prevButtonState){
+      selected = true;
+      prevButtonState = buttonState;
+      start_time = millis();
+    }
     // navigate through different menu options
     switch(menuCount){
       case 0: //SET MAXIMUM TEMPERATURE
-        if(prevMenuCount!=menuCount){
-          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));          
-          prevMenuCount = menuCount;
-        }
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-          start_time = millis();
-        }
         while(selected){
+          curr_time = millis();
+          // exit the loop if wait time exeeds
+          if((curr_time - start_time)>30000UL){
+            selected = false;
+            prevMenuCount = -1;
+            break;
+          }
           // display temperature only once
           if(float_abs_diff(upperLimit, prevReading)){
             lcd_print("Temp Max: ", upperLimit);
@@ -227,17 +236,7 @@ void loop(){
           }
         }
         break;
-      case 1: // SET MINIMUM TEMPERATURE
-        if(prevMenuCount!=menuCount){
-          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));
-          prevMenuCount = menuCount;
-        }
-        
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-          start_time = millis();
-        }
+      case 1: // SET MINIMUM TEMPERATURE        
         while(selected){
           curr_time = millis();
           // exit the loop if wait time exeeds
@@ -271,19 +270,7 @@ void loop(){
           }
         }
         break;
-      case 2: // SET MINIMUM TEMPERATURE
-        if(prevMenuCount!=menuCount){
-          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));
-          prevMenuCount = menuCount;
-        }
-        
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-          start_time = millis();      // reset menu wait time
-        }
-
-        //display only once
+      case 2: // SET MINIMUM TEMPERATURE        
         disp = true;
         // adjustment loop
         while(selected){
@@ -328,16 +315,6 @@ void loop(){
         }
         break;
       case 3: // MOVING INTERVAL
-        if(prevMenuCount!=menuCount){
-          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));          
-          prevMenuCount = menuCount;
-        }
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-          start_time = millis();      // reset menu wait time
-        }
-
         //display only once
         disp = true;
         while(selected){
@@ -382,15 +359,6 @@ void loop(){
         }
         break;
       case 4://SET TIME AND DATE
-        if(prevMenuCount!=menuCount){
-          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));;          
-          prevMenuCount = menuCount;
-        }
-        if(buttonState!=prevButtonState){
-          selected = true;
-          prevButtonState = buttonState;
-          start_time = millis();      // reset menu wait time
-        }
         count = 0;
         prevCount = -1;
         while(selected){// adjustment loop
@@ -453,15 +421,10 @@ void loop(){
         }
         break;
       case 5: // EXIT MENU
-        if(prevMenuCount!=menuCount){
-          updateMenu(menuOptions, menuCount,sizeof(menuOptions)/sizeof(String));;          
-          prevMenuCount = menuCount;
-        }
-        if(prevButtonState!=buttonState){
+        if(selected){
           menuState = false;
           menuCount = 0;
-          prevMenuCount = -1;
-          prevButtonState = buttonState;
+          selected = false;
         }
         break; 
       default:
