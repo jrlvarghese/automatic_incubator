@@ -60,7 +60,7 @@ uint8_t temp = 0;
 bool rot_trigger = false;
 volatile bool pinALastState = false;
 bool pinACurrState = false;
-unsigned int count = 0;
+int count = 0;
 unsigned int prevCount = 50;
 
 bool pol_a = false;             // Analog pin A0
@@ -83,9 +83,10 @@ float lowerLimit = 0;
 float prevReading = 0;
 float avgTemp = 0;
 
-volatile bool menuState = false;
+bool menuState = false;
 bool selected = false;
 bool disp = false;
+String menuOptions[6] = {"TEMPERATURE MAX", "TEMPERATURE MIN", "MOVE TRAY", "MOVING INTERVAL", "DATE & TIME", "EXIT"};
 
 void setup(){
   pinMode(pol_a_pin, INPUT);
@@ -156,29 +157,28 @@ void setup(){
   }
   // switch of all stepper pins
   stepperOff();
+  // compare button state
+  prevButtonState = buttonState;
 }
 
 void loop(){
   bool menuCounter = false;
+  // track if there is buttonstate change then enter into menu
+  if(buttonState != prevButtonState){
+    menuState = true;
+    prevButtonState = buttonState;
+  }
+  // if menu button pressed enter into menu loop
   while(menuState){    
     count = getEncoder(count);
     delay(1);
+    (count>5)?count=5:count;
+    (count<0)?count=0:count;
     // navigate through different menu options
     switch(count){
-      case 0: //BASIC MENU
-        if(count==0 && !menuCounter){
-          lcd.clear();
-          lcd.print("MENU");  
-          lcd.setCursor(0,1);
-          lcd.print("Rotate to select");
-          menuCounter = true;
-          prevCount = count;
-        }
-        break;
-      case 1: //SET MAXIMUM TEMPERATURE
+      case 0: //SET MAXIMUM TEMPERATURE
         if(prevCount!=count){
-          lcd.clear();
-          lcd.print("SET MAX TEMP");
+          updateMenu(menuOptions,count,6);          
           prevCount = count;
         }
         if(buttonState!=prevButtonState){
@@ -205,17 +205,17 @@ void loop(){
           // exit from the loop if button pressed
           if(buttonState!=prevButtonState){
             selected = false;
-            count = 1;
-            prevCount = 0;
+            count = 0;
+            prevCount = -1;
             prevReading = 0;
+            prevButtonState = buttonState;
             break;
           }
         }
         break;
-      case 2: // SET MINIMUM TEMPERATURE
+      case 1: // SET MINIMUM TEMPERATURE
         if(prevCount!=count){
-          lcd.clear();
-          lcd.print("SET MIN TEMP");
+          updateMenu(menuOptions, count, 6);          
           prevCount = count;
         }
         
@@ -240,18 +240,18 @@ void loop(){
           prevCount = count;                    // remember previous encoder count
           // if button pressed exit from loop
           if(buttonState!=prevButtonState){
+            prevButtonState = buttonState;
             selected = false;
-            count = 2;
+            count = 1;
             prevCount = 0;
             prevReading = 0;
             break;
           }
         }
         break;
-      case 3: // SET MINIMUM TEMPERATURE
+      case 2: // SET MINIMUM TEMPERATURE
         if(prevCount!=count){
-          lcd.clear();
-          lcd.print("MOVE TRAY");
+          updateMenu(menuOptions, count, 6);          
           prevCount = count;
         }
         
@@ -286,17 +286,17 @@ void loop(){
           // if button pressed exit from loop
           if(buttonState!=prevButtonState){
             selected = false;
-            count = 3;
+            count = 2;
             prevCount = 0;
             prevReading = 0;
+            prevButtonState = buttonState;
             break;
           }
         }
         break;
-      case 4:
+      case 3:
         if(prevCount!=count){
-          lcd.clear();
-          lcd.print("MOVING INTERVAL");
+          updateMenu(menuOptions, count, 6);          
           prevCount = count;
         }
         if(buttonState!=prevButtonState){
@@ -332,33 +332,34 @@ void loop(){
           // if button pressed exit from loop
           if(buttonState!=prevButtonState){
             selected = false;
-            count = 4;
+            count = 3;
             prevCount = 0;
             prevReading = 0;
+            prevButtonState = buttonState;
             break;
           }
         }
         break;
-      case 5://SET TIME AND DATE
+      case 4://SET TIME AND DATE
         if(prevCount!=count){
-          lcd.clear();
-          lcd.print("DATE & TIME");
+          updateMenu(menuOptions, count, 6);          
           prevCount = count;
         }
         break;
-      case 6:
+      case 5:
         if(prevCount!=count){
-          lcd.clear();
-          lcd.print("EXIT");
+          updateMenu(menuOptions, count, 6);          
           prevCount = count;
         }
         if(prevButtonState!=buttonState){
           menuState = false;
           count = 0;
+          prevButtonState = buttonState;
         }
-        break;   
+        break; 
+      default:
+        break;  
     }
-    prevButtonState = buttonState;   
   }
   // Get current time
   curr_time = millis();
@@ -424,8 +425,10 @@ void loop(){
     Serial.print(humidity); 
     Serial.print(", DHT temp: ");
     Serial.println(dht_temperature);
+    Serial.println();
     // track disply interval 
     disp_interval = curr_time;
+    
   }
   
 
@@ -552,9 +555,8 @@ void isr(){
   unsigned long currentInterruptTime = millis();
   if(currentInterruptTime - lastInterruptTime > 50){
     buttonState = !buttonState; 
-    menuState = true;   
+    lastInterruptTime = currentInterruptTime;
   }
-  lastInterruptTime = currentInterruptTime;
   
 }
 
@@ -604,4 +606,17 @@ bool float_abs_diff(float a, float b){
     }else{
       return false;
     }
+}
+
+void updateMenu(String arr[], uint8_t m, uint8_t arrLen){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(">");
+  lcd.print(arr[m]);
+  if(m < (arrLen-1)){
+    lcd.setCursor(0,1);
+    lcd.print(" ");
+    lcd.print(arr[m+1]);
+  }
+  
 }
