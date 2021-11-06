@@ -74,6 +74,8 @@ unsigned long curr_time = 0;
 unsigned long sense_interval = 0;
 unsigned long disp_interval = 0;
 unsigned long max_wait = 60;
+unsigned long rot_start_time = 0;
+unsigned long rot_curr_time = 0;
 
 float humidity = 0;
 float dht_temperature = 0;
@@ -87,7 +89,20 @@ float avgTemp = 0;
 
 bool menuState = false;
 bool selected = false;
+bool subMenuSelected = false;
 bool disp = false;
+
+int8_t hour = 0;
+int8_t prevHour = 0;
+int8_t minute = 0;
+int8_t prevMinute = 0;
+int8_t seconds = 0;
+int8_t date = 0;
+int8_t month = 0;
+int8_t year = 0;
+
+int test_counter = 0;
+
 String menuOptions[6] = {"TEMPERATURE MAX", "TEMPERATURE MIN", "MOVE TRAY", "MOVING INTERVAL", "DATE & TIME", "EXIT"};
 String dateTimeOptions[5] = {"HOUR", "MINUTE", "DATE", "MONTH", "YEAR"};
 
@@ -123,6 +138,7 @@ void setup(){
   }else{
     Serial.println("RTC working.");
   }
+  RTC.adjust(DateTime(__DATE__, __TIME__));
 
   // begin onewire communication for temperature sensor
   sensors.begin();
@@ -165,6 +181,10 @@ void setup(){
 }
 
 void loop(){
+  // Get date and time from RTC module
+  DateTime dt_now = RTC.now();
+  String date_string = get_date_string(dt_now);
+
   // track if there is buttonstate change then enter into menu
   if(buttonState != prevButtonState){
     menuState = true;
@@ -361,6 +381,15 @@ void loop(){
       case 4://SET TIME AND DATE
         count = 0;
         prevCount = -1;
+        // get current time and date
+        hour = dt_now.hour();
+        prevHour = hour;
+        minute = dt_now.minute();
+        prevMinute = minute;
+        date = dt_now.day();
+        month = dt_now.month();
+        year = dt_now.year();
+
         while(selected){// adjustment loop
           // exit loop if wait time exceeds
           curr_time = millis();
@@ -380,44 +409,76 @@ void loop(){
               prevCount = count;
           }
 
-          if(buttonState!=prevButtonState){
-            selected = false;
-            prevMenuCount = -1;         // reset previous menu 
+          // check if button pressed then inter into menu
+          if(buttonState != prevButtonState){
+            subMenuSelected = true;
             prevButtonState = buttonState;
-            temp = -1;
-            start_time = millis();       // reset menu wait time
-            break;
+            start_time = millis();
           }
-          // switch(count){
-          //   case 0:
-          //     if(count != prevCount){
-          //       updateMenu(dateTimeOptions, count);
-          //       prevCount = count;
-          //     }
-          //   break;
-          //   case 1:
-          //      if(count != prevCount){
-          //       updateMenu(dateTimeOptions, count);
-          //       prevCount = count;
-          //     }
-          //   break;
-          //   case 2:
-          //     if(count != prevCount){
-          //       updateMenu(dateTimeOptions, count);
-          //       prevCount = count;
-          //     }
-          //   break;
-          //   case 3:
-          //     if(count != prevCount){
-          //       updateMenu(dateTimeOptions, count);
-          //       prevCount = count;
-          //     }
-          //   break;
-          //   default:
-          //   break;
 
-          // }
-
+          // check if time adjusted then display save option
+          if((prevMinute != minute)||(prevHour != hour)){
+            count = 6;
+            selected = false;
+          }
+          switch(count){
+            case 0:// Adjust hour
+              temp = -1;
+              while(subMenuSelected){
+                count = getEncoder(count);            // Get encoder readings
+                if(count>prevCount)hour++;    // increment
+                if(count<prevCount)hour--;    // decrement
+                // validate values
+                (hour>24)?hour=24:hour;
+                (hour<0)?hour=0:hour;
+                prevCount = count;            // track previous count to monitor changes
+                delay(1);
+                if(hour != temp){
+                  lcd.clear();
+                  lcd.print("HOUR: ");
+                  lcd.print(hour);
+                  temp = hour;
+                }
+                
+                if(buttonState != prevButtonState){
+                  subMenuSelected = false;
+                  prevButtonState = buttonState;
+                  count = 0;
+                  start_time = millis();
+                  prevCount = -1;
+                }
+              }
+            break;
+            case 1:// Minutes
+              temp = -1;
+              while(subMenuSelected){
+                count = getEncoder(count);            // Get encoder readings
+                if(count>prevCount)minute++;    // increment
+                if(count<prevCount)minute--;    // decrement
+                // validate values
+                (minute>60)?minute=24:minute;
+                (minute<0)?minute=0:minute;
+                prevCount = count;            // track previous count to monitor changes
+                delay(1);
+                if(minute != temp){
+                  lcd.clear();
+                  lcd.print("MINUTE: ");
+                  lcd.print(minute);
+                  temp = minute;
+                }
+                
+                if(buttonState != prevButtonState){
+                  subMenuSelected = false;
+                  prevButtonState = buttonState;
+                  count = 0;
+                  start_time = millis();
+                  prevCount = -1;
+                }
+              }
+            break;
+            default:
+            break;
+          }          
         }
         break;
       case 5: // EXIT MENU
@@ -426,17 +487,24 @@ void loop(){
           menuCount = 0;
           selected = false;
         }
-        break; 
+        break;
+      case 6:
+        if(disp){
+          lcd.clear();
+          lcd.print("Press to save.");
+          disp = false;
+        }
+        if(buttonState != prevButtonState){
+          selected = false;
+          menuCount = 0;
+        } 
       default:
         break;  
     }
   }
   // Get current time
   curr_time = millis();
-  // Get date and time from RTC module
-  DateTime dt_now = RTC.now();
-  String date_string = get_date_string(dt_now);
-  
+    
   // get temperature and humidity sensor readings every one second
   if(curr_time - sense_interval >= 1000UL){
     // Request temperature readings from DS18b20 sensor
@@ -496,59 +564,82 @@ void loop(){
     Serial.print(", DHT temp: ");
     Serial.println(dht_temperature);
     Serial.println();
+    Serial.print("POl_A: ");
+    Serial.println(pol_a);
+    Serial.print("Pol_B: ");
+    Serial.println(pol_b);
+    Serial.print("Test counter: ");
+    Serial.println(test_counter);
+    test_counter++;
     // track disply interval 
     disp_interval = curr_time;
     
   }
+
+  // this will move towards pol_a i.e. positive number moves towards A 
+  // myStepper.step(10);
+  stepperOff();
+  pol_a = digitalRead(pol_a_pin);
+  pol_b = digitalRead(pol_b_pin);
+  // if(test_counter <= 10){
+  //   // if starting at pole A move to pole B
+  //   if(pol_a && !pol_b){
+  //   //  lcd.clear();
+  //   //  lcd.print("Rotating.. to B");
+  //     move_to(pol_b_pin, 'B');
+  //     rot_trigger = false;
+  //   }else if(pol_b && !pol_a){
+  //     // if at pole B move to pole A
+  //   //  lcd.clear();
+  //   //  lcd.print("Rotating.. to A");
+  //     move_to(pol_a_pin, 'A');
+  //     rot_trigger = false;      
+  //   }
+  //   if(pol_a && pol_b){
+  //     lcd.clear();
+  //     lcd.print("Error pos sensors!");
+  //   }
+  // }
+
+  if(test_counter >= 20)test_counter = 0;
   
 
   // Check if triggered time is reached
-  if((dt_now.hour()%rot_interval == 0)&&(dt_now.minute()==0)){
+  if((dt_now.hour()%rot_interval == 0)&&(dt_now.minute()==0)&&(dt_now.second()<10)){
     rot_trigger = true;
   }
+  // if(test_counter == 10){
+  //   rot_trigger = true;
+  // }
 
- 
-//  if(rot_trigger && lever_status){
-//    // Switch of the heating element while rotating
-//    digitalWrite(heatPin, LOW);
-//    lcd.clear();
-//    int count = 5;
-//    for(int i=0; i<count; i++){
-//      lcd.clear();
-//      lcd.print("Rotating in: ");
-//      count--;
-//      lcd.print(count);
-//      lcd.print("s");
-//      delay(1000);
-//    }
-//    // if starting at pole A move to pole B
-//    if(pol_a){
-//      lcd.clear();
-//      lcd.print("Rotating.. to B");
-//      move_to(pol_b_pin, 'B');
-//      rot_trigger = false;
-//    }else if(pol_b){
-//      // if at pole B move to pole A
-//      lcd.clear();
-//      lcd.print("Rotating.. to A");
-//      move_to(pol_a_pin, 'A');
-//      rot_trigger = false;      
-//    }
-//    
-//  }
-
-//  // Serial monitor, to see positions sensor data
-//  Serial.print("Pol A: ");
-//  pol_a = digitalRead(pol_a_pin);
-//  Serial.println(pol_a);
-//
-//  Serial.print("Pol B: ");
-//  pol_b = digitalRead(pol_b_pin);
-//  Serial.println(pol_b);
-//  delay(500);
-//  Serial.println();
-//  stepperOff();
-
+  if(rot_trigger && lever_status){
+    // Switch of the heating element while rotating
+    digitalWrite(heatPin, LOW);
+    int rot_count = 5;
+    for(int i=0; i<rot_count; i++){
+      lcd.clear();
+      lcd.print("Rotating in: ");
+      rot_count--;
+      lcd.print(rot_count);
+      lcd.print("s");
+      delay(1000);
+    }
+    lcd.clear();
+    lcd.print("Rotating");
+    // if starting at pole A move to pole B
+    if(pol_a){
+    //  lcd.clear();
+    //  lcd.print("Rotating.. to B");
+      move_to(pol_b_pin, 'B');
+      rot_trigger = false;
+    }else if(pol_b){
+      // if at pole B move to pole A
+    //  lcd.clear();
+    //  lcd.print("Rotating.. to A");
+      move_to(pol_a_pin, 'A');
+      rot_trigger = false;      
+    }
+  }
   
 }
 
@@ -596,8 +687,12 @@ String get_date_string(DateTime dt){
   
 }
 
-bool move_to(int pin, char pol){
+void move_to(int pin, char pol){
   bool pin_status = false;
+  pin_status = digitalRead(pin);
+  // get start time of rotation
+  rot_start_time = millis();
+  // loop until the tray reaches sensor
   while(!pin_status){
     pin_status = digitalRead(pin);
     if(pol == 'A'){
@@ -607,7 +702,15 @@ bool move_to(int pin, char pol){
     if(pol == 'B'){
       myStepper.step(-10);
     }
+    rot_curr_time = millis();
+    // check if rotation loop takes longer than usual(more than 35 seconds)
+    if(rot_curr_time - rot_start_time >= 35000UL){
+      lcd.clear();
+      lcd.print("Error moving!!");
+      break;
+    }
   }
+  stepperOff();
 }
 
 // FUNCTION TO GET AVERAGE OF AN ARRAY
